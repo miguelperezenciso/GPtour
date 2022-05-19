@@ -20,8 +20,10 @@ On top, for running deepl learning you need to install miniconda, follow instruc
 
 ## How to use
 
+### only once
+
 ``` r
-# only once
+
 install.packages('remotes')
 remotes::install_github('miguelperezenciso/GPtour')
 
@@ -30,6 +32,5 @@ library(GPtour)
 library(learnr)
 learnr::run_tutorial('tour', 'GPtour')
 
-# Enjoy!
-
 ```
+### Enjoy!
