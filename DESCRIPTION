@@ -13,3 +13,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.2
 Suggests: 
     learnr
+Imports: 
+    gradethis (>= 0.2.8.9000)
+Remotes:  
+    rstudio/gradethis
