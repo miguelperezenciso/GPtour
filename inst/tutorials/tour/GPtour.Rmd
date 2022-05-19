@@ -71,12 +71,159 @@ knitr::opts_chunk$set(echo = FALSE,
                       warning = FALSE,
                       error = FALSE,
                       message = FALSE)
+```
+
+```{r data, include=TRUE, echo=FALSE, message=FALSE}
 
 # Create data
 data(wheat)
 X = wheat.X
 Y = wheat.Y
 y = Y[,2]
+
+# N obs
+n = nrow(X)
+# N markers
+p = ncol(X)
+# phenotype
+y = Y[,2]
+
+# test set comprises 20% of data, randomly chosen
+
+tst = sort(sample(1:n, size=n*0.2, replace=FALSE))
+
+# train set
+XTRN<-X[-tst,]
+yTRN<-y[-tst]
+
+# testing test
+XTST<-X[tst,]
+yTST<-y[tst]
+
+yNA = y
+yNA[tst] = NA
+
+# ----
+
+# function "vanraden"
+
+vanraden = function(X){
+   # allele frequencies (assumes genotypes coded as 0,1,2)
+   p = apply(X, 2, mean) * 0.5
+   G = tcrossprod(scale(X, scale = FALSE))
+   G = G / (2 * sum(p*(1-p)))
+   diag(G) = diag(G)*1.05
+   return(G)
+}
+
+# function "mme"
+
+mme = function(y, V, h2, invert=FALSE){
+   # y = phenotypes; V = covariance matrix; h2 = heritability
+   if (invert) V = solve(V)
+   n = length(y)
+   x = rep(1,n)
+   # replace missing with 0's
+   x[is.na(y)] = 0
+   y[is.na(y)] = 0
+   Z = diag(x)
+   LHS = matrix(nrow=n+1, ncol=n+1)
+   V = V *(1-h2)/h2 + t(Z)%*%Z
+   LHS[1,] = c(t(x)%*%(x), x)
+   LHS[-1,] = cbind(x,V)
+   RHS = c(t(x)%*%y, t(Z%*%y))
+   return(list('LHS'=LHS, 'RHS'=RHS))
+}
+
+# ----
+
+# no of families
+nf = 10
+
+# cluster
+h = hclust(dist(X),method="ward.D2")
+
+# cuts the tree into nf clusters (families), hcut contains cluster id for each ind
+hcut = cutree(h,nf)
+
+# size is n plus two parents per family
+N = nrow(X) + 2*nf
+ped = matrix(0, nrow=N, ncol=3)
+ped[,1] = seq(N)
+ped[(2*nf+1):N,2] = hcut*2-1
+ped[(2*nf+1):N,3] = hcut*2
+
+# AGHmatrix package used to compute pedigree based relationship matrix
+A = Amatrix(ped)
+
+# ----
+
+# no. individuals in pedigree
+N = nrow(A)
+# no. individuals genotyped available
+n = nrow(X)
+# no. individuals not genotyped = founders + n/5
+# %/% is the integer division
+n0 = nf*2 + n %/% 5
+
+# list of genotyped individuals (last n*4/5), ids refer to whole pedigree
+idX = seq((n0 + 1), N)
+
+# Xss: actual X to be used
+# IMPORTANT: we need to subtract no. of founders since X contains genotypes of non-founders only (dimension n), idX refers to the global pedigree ids.
+Xss = X[(idX-2*nf),]
+
+# ----
+
+Gss = vanraden(Xss)
+G_1 = solve(Gss)
+
+# block in A for genotyped individuals, inverted
+A22_1 = solve(A[idX,idX])
+
+# inverse of A. Efficient rules to invert A are known since 1976, 
+# here we simply use brute force, (sorry, Chuck).
+A_1 = solve(A)
+
+# H inverse
+H_1 = A_1
+H_1[idX,idX] = H_1[idX,idX] + G_1 - A22_1
+
+# That's it!
+
+# ----
+
+# returns H inverse
+doH_1 = function(A,G,idX) {
+    # A is pedigree relationship matrix, 
+    # G is GRM of genotyped individuasl, 
+    # A[idX,idX] contains block of A corresponding to genotyped inds
+    G_1 = solve(G)
+
+    # block in A for genotyped individuals, inverted
+    A22_1 = solve(A[idX,idX])
+
+    # inverse of A
+    A_1 = solve(A)
+
+    # H inverse
+    H_1 = A_1
+    H_1[idX,idX] = H_1[idX,idX] + G_1 - A22_1
+}
+
+# ----
+
+H = matrix(nrow=N,ncol=N)
+A22_1 = solve(A[idX,idX])
+A12 = A[-idX,idX]
+
+H11 = A[-idX,-idX] + A12 %*% A22_1 %*% (Gss-A[idX,idX]) %*% A22_1 %*% t(A12)
+H12 = A12 %*% A22_1 %*% Gss
+
+H[-idX,-idX] = H11
+H[-idX,idX] = H12
+H[idX,-idX] = t(H12)
+H[idX,idX] = Gss
 ```
 
 ## Data
@@ -301,7 +448,7 @@ GBLUP was originally proposed by [Van Raden (2008)](https://www.sciencedirect.co
 
 The main limitation of GBLUP is that the inverse of GRM has to be obtained using standard matrix inversion algorithms. In comparison, a rule to invert A very efficiently has been known for decades. [Ignacy Misztal](https://animaldairy.uga.edu/people/faculty/ignacy-misztal.html), co-inventor of the single step method, has also developed approximations to the inverse of GRM when dimensions are huge.
 
-```{r exg1, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+```{r exg1, include=TRUE,warning=FALSE,echo=TRUE,eval=FALSE}
 # this function computes GRM with Van Raden algorithm
 vanraden = function(X){
    # allele frequencies (assumes genotypes coded as 0,1,2)
@@ -335,7 +482,7 @@ The mixed model equations (Henderson) in matricial notation are:
 
 Let us write a function to compute MMEs
 
-```{r  exg2, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+```{r  exg2, include=TRUE,warning=FALSE,echo=TRUE,eval=FALSE}
 # this function returns left and right hand side of mixed model equations
 mme = function(y, V, h2, invert=FALSE){
    # y = phenotypes; V = covariance matrix; h2 = heritability
@@ -358,6 +505,7 @@ mme = function(y, V, h2, invert=FALSE){
 Now let us put everything together and 
 
 ```{r ex12, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE, exercise=TRUE}
+
 # phenotypes with tst individuals missing values
 yNA = y
 yNA[tst] = NA
@@ -427,7 +575,7 @@ fmRR<-BGLR(y=yNA,ETA=ETA,nIter=5000,burnIn=2000,verbose=FALSE)
 # trace plot of the residual variance
 varE<- scan("varE.dat")
 plot(varE, ylab='Var E', xlab='Iteration', type="o",col=2,cex=.5)
-abline(h=fm$varE,col=4, lwd=2)
+abline(h=fmRR$varE,col=4, lwd=2)
 
 ## plots of estimates
 plot(fmRR$ETA[[1]]$b,col=4,ylab='Estimate',main='BRR')
@@ -458,7 +606,7 @@ fmBB<-BGLR(y=yNA,ETA=ETA,nIter=5000,burnIn=2000,verbose=FALSE)
 
 print(c('Corr Obs vs. Bayes B', round(cor(fmBB$yHat[tst], y[tst]),3)))
 
-plot(y[tst], fmBA$yHat[tst],col=4, ylab='Observed y',xlab='Bayes B prediction')
+plot(y[tst], fmBB$yHat[tst],col=4, ylab='Observed y',xlab='Bayes B prediction')
 ```
 
 ### Bayes C
@@ -480,8 +628,13 @@ plot(y[tst], fmBC$yHat[tst],col=4,ylab='Observed y',xlab='Bayes C prediction')
 A Bayesian version of GBLUP can be implemented in different ways using BGLR (https://github.com/gdlc/BGLR-R/blob/master/inst/md/GBLUP.md). Here we used Bayesian RR whereby the principal components are the features modeled instead of the marker set. The main difference between Bayesian GBLUP and GBLUP is that uncertainties on variance components are integrated out in the Bayesian approach.
 
 We use an alternative algorithm to that of Van Raden to build the Genomic Relationship Matrix. It is simply the correlation matrix.
-
+<!--
 ```{r exb6, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+
+```
+-->
+
+```{r exb7, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
 # GRM
 doGRM = function(X) {
     G = tcrossprod(scale(X))
@@ -490,10 +643,7 @@ doGRM = function(X) {
     diag(G) = diag(G)*1.05
     return(G)
 }
-```
 
-
-```{r exb7, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
 # Bayesian GBLUP, BRR with PC decomposition
 G = doGRM(X)
 EVD<-eigen(G)
@@ -503,7 +653,7 @@ ETA=list(list(X=PC,model='BRR'))
 fmGB<-BGLR(y=yNA,ETA=ETA,nIter=5000,burnIn=2000,verbose=F)
 
 ### corr between predicted and observed
-print(c('Corr Obs vs. Bayes GBLUP', round(cor(fmBB$yHat[tst], y[tst]),3)))
+print(c('Corr Obs vs. Bayes GBLUP', round(cor(fmGB$yHat[tst], y[tst]),3)))
 
 plot(y[tst], fmGB$yHat[tst],col=4,ylab='Observed y',xlab='BRR prediction')
 ```
@@ -553,6 +703,28 @@ A = Amatrix(ped)
 We need to specify genotyped and ungenotyped individuals. Original **X** has dimension nxp, current pedigree has n+2nf ids. Founder individuals are arbitrary and have no phenotypes.  
   
 Let us assume first n/5 in X plus the 2nf founder individuals are not genotyped. Therefore, we need to consider only markers in X from individual n/5 + 1 onwards, since X does not include the founder, simulated individuals.
+
+```{r, include=TRUE,warning=FALSE,echo=FALSE, eval=TRUE}
+# no of families
+nf = 10
+
+# cluster
+h = hclust(dist(X),method="ward.D2")
+
+# cuts the tree into nf clusters (families), hcut contains cluster id for each ind
+hcut = cutree(h,nf)
+
+# size is n plus two parents per family
+N = nrow(X) + 2*nf
+ped = matrix(0, nrow=N, ncol=3)
+ped[,1] = seq(N)
+ped[(2*nf+1):N,2] = hcut*2-1
+ped[(2*nf+1):N,3] = hcut*2
+
+# AGHmatrix package used to compute pedigree based relationship matrix
+A = Amatrix(ped)
+```
+
 ```{r exh2, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
 # no. individuals in pedigree
 N = nrow(A)
@@ -596,7 +768,7 @@ H_1[idX,idX] = H_1[idX,idX] + G_1 - A22_1
 Amazing, isn't it?
 
 You can have above code as function:
-```{r exh5, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+```{r,echo=TRUE,eval=FALSE}
 # returns H inverse
 doH_1 = function(A,G,idX) {
     # A is pedigree relationship matrix, 
