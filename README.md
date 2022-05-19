@@ -7,6 +7,7 @@ The main code is in [GS.Rmd](https://github.com/miguelperezenciso/GPtour/blob/ma
 
 You need to install these packages to be able to run [GS.Rmd](https://github.com/miguelperezenciso/GPtour/blob/main/inst/tutorials/tour/GPtour.Rmd)
 
+```
 install.packages("BGLR",repos="https://cran.r-project.org/")  
 install.packages("glmnet",repos="https://cran.r-project.org/")  
 install.packages("AGHmatrix", repos="https://cran.r-project.org/")  
@@ -14,7 +15,7 @@ install.packages('learnr',repos="https://cran.r-project.org/")
 install.packages('downloadthis',repos="https://cran.r-project.org/")  
 install.packages("remotes",repos="https://cran.r-project.org/")  
 remotes::install_github("rstudio/gradethis") 
-
+``` 
 On top, for running deepl learning you need to install miniconda, follow instructions in https://keras.rstudio.com/ 
 
 ## How to use
