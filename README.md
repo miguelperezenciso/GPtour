@@ -22,15 +22,16 @@ On top, for running deepl learning you need to install miniconda, follow instruc
 
 ### only once
 
-``` r
-
+``` 
 install.packages('remotes')
 remotes::install_github('miguelperezenciso/GPtour')
+```
 
-# to use
+### to use
+```
+# type in your console
 library(GPtour)
 library(learnr)
 learnr::run_tutorial('tour', 'GPtour')
-
 ```
 ### Enjoy!
