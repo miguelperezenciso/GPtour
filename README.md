@@ -7,7 +7,7 @@ The main code is in [GS.Rmd](https://github.com/miguelperezenciso/GPtour/blob/ma
 
 You need to install these packages to be able to run [GS.Rmd](https://github.com/miguelperezenciso/GPtour/blob/main/inst/tutorials/tour/GPtour.Rmd)
 
-```
+``` r
 install.packages("BGLR",repos="https://cran.r-project.org/")  
 install.packages("glmnet",repos="https://cran.r-project.org/")  
 install.packages("AGHmatrix", repos="https://cran.r-project.org/")  
@@ -20,7 +20,7 @@ On top, for running deepl learning you need to install miniconda, follow instruc
 
 ## How to use
 
-```
+``` r
 # only once
 install.packages('remotes')
 remotes::install_github('miguelperezenciso/GPtour')
