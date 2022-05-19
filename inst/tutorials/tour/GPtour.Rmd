@@ -1,0 +1,1030 @@
+---
+title: "Genomic_prediction: A_practical_tour_in_R"
+author:
+  - name: Miguel Pérez-Enciso
+    email: miguel.perez@uab.es
+output: 
+  learnr::tutorial:
+    css: css/Estilo.css
+runtime: shiny_prerendered
+nocite: '@*'
+---
+
+## Welcome!
+Thank you for passing by, hope you find it useful.
+
+### Assumptions
+I assume you are somewhat familiar with genomic prediction, and have some knowledge of R and Statistics. 
+
+### What is this?
+This is a quick, straight to the point tour on how to implement genomic prediction (**GP**) in R using the most popular algorithms in breeding. Albeit simple, it provides the basics on which you can build far more complex models. I recommend Andrés Legarra [notes](http://genoweb.toulouse.inra.fr/~alegarra/GSIP.pdf) for methods in GP, [BGLR](https://github.com/gdlc/BGLR-R), [glmnet](https://glmnet.stanford.edu/articles/glmnet.html) and [scikit](https://scikit-learn.org/stable/tutorial/index.html) doc websites for further documentation. These notes will not explain too many methodological insights. 
+
+### What is genomic predicion?
+Genomic prediction is the strategy whereby all available markers, irrespective of their effect, are included in the model to make predictions. By comparison, only significant markers are used in Marker Assisted Selection (**MAS**). The main reason why MAS performs much worse than GP is that there are many markers that explain a non-significant part of the variance individually (and are therefore not selected for MAS) but that, collectively, they help in prediction. The seminal work for GP was published in 2001 in Genetics ' [Prediction of total genetic value using genome-wide dense marker maps](https://doi.org/10.1093/genetics/157.4.1819) ', by Theo Meuwissen, Ben Hayes and Mike Goddard. Retrospectively, it is interesting to note that this work uses haplotypes instead of invidual markers as regressors.
+
+### Prediction is a pragmatic, heterogenous field
+It does not matter whether the algorithm is black or white, as long as it predicts well ([Deng Xiaoping](https://en.wikipedia.org/wiki/Deng_Xiaoping), father of machine learning spirit and one of the most influential and amazing leaders from the 20th century).  
+  
+Unsurprisingly, dozens of diverse algorithms exist for prediction ([scikit](https://scikit-learn.org/stable/tutorial/machine_learning_map/index.html), [Gianola 2013](https://doi.org/10.1534/genetics.113.151753)). 
+
+### Acknowledgment
+I thank [Laura Zingaretti](https://www.linkedin.com/in/laura-m-zingaretti/) and MSc student Jorge Leonardo López Martínez (jollopezma@unal.edu.co) from Universidad de Medellín in beautiful Colombia for their generous help with this script. Part of this script is based on Gustavo de los Campos (gdeloscampos@epi.msu.edu).
+
+### About me
+[github](https://github.com/miguelperezenciso)
+[icrea](https://www.icrea.cat/Web/ScientificStaff/Miguel-Perez-Enciso-255)
+[publons](https://publons.com/researcher/1438761/miguel-perez-enciso)
+[scholar](https://scholar.google.es/citations?user=Lpl_-dcAAAAJ&hl=es)
+
+### Requirements
+These notes are written in [R markdown](https://rmarkdown.rstudio.com/) and [learnr](https://rstudio.github.io/learnr/). Extremely useful and worth learning tools.
+
+install.packages("BGLR",repos="https://cran.r-project.org/")  
+install.packages("glmnet",repos="https://cran.r-project.org/")  
+install.packages("AGHmatrix", repos="https://cran.r-project.org/")  
+install.packages('learnr',repos="https://cran.r-project.org/")  
+install.packages('downloadthis',repos="https://cran.r-project.org/")  
+install.packages("remotes",repos="https://cran.r-project.org/")  
+remotes::install_github("rstudio/gradethis")   
+install.packages("tensorflow",repos="https://cran.r-project.org/")  
+install.packages("keras",repos="https://cran.r-project.org/")  
+install.packages("tfdatasets", repos="https://cran.r-project.org/")
+
+
+```{r setup, include=TRUE}
+### Libraries required
+library(learnr)
+library(devtools)
+library(usethis)
+library(roxygen2)
+library(tidyverse)
+library(gradethis)
+library(downloadthis)
+library(BGLR)
+library(Matrix)
+library(glmnet)
+library(ggplot2)
+library(AGHmatrix)
+library(ggpubr)
+tutorial_options(exercise.timelimit = 60, exercise.checker = gradethis::grade_learnr)
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      error = FALSE,
+                      message = FALSE)
+```
+
+## Data
+### In God we trust, all others bring data (Tibshirani et al)
+Translation reads: 'In natural selection we trust, for artificial one, bring genotypes and phenotypes'.
+
+### Data curation
+* 'Data' usually comes in a form of tables, usually in a matrix **X** of dimension nxp (n samples and p features or SNPs in this context) and a vector **y** with n values for the target (the phenotypes). 
+
+* Data is all you need but the procedure to convert your raw data into a proper X and y tables that you can feed the machine learning (**ML**) algorithms can be extremely painful and boring. It usually involves filtering (eg, removing SNPs with many missing data or low frequency), imputation of missing values, transformation (eg, log to achieve normality), matching ids, and many others. 
+
+* You must pay utmost attention and care to data curation, use common sense and know exactly which is the goal of the analysis. 
+
+* Write **and document** code that automatizes this step as you may need to repeat it. In fact, automatizing all parts of the analysis, including Figures' and Tables' rendering, is the best practice you can develop.
+
+### Your data
+Your are lucky: someone else has prepared the data for you. Here we will use wheat genotypes and phenotypes from CIMMYT (https://www.cimmyt.org). The data are described in https://rdrr.io/cran/BGLR/man/wheat.html. We will use the phenotype in second column of matrix **Y**.
+
+<!--```{r ex1, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}-->
+
+```{r ex1, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# this is a dataset included with BGLR package
+data(wheat)
+# marker data, genotypes are coded as 0/1 as they are inbred lines
+X = wheat.X
+# phenotypes
+Y = wheat.Y
+# N obs
+n = nrow(X)
+# N markers
+p = ncol(X)
+# phenotype
+y = Y[,2]
+```
+
+### Data inspection
+**Garbage in, garbage out** ML practitioners say. It is often thought that data quantity can be a substitute for data quality: No way. Before embarking in a complex, perhaps lengthy analysis, it is worth doing some inspection of the data. Visualizing the data is a must. Many plots can be made, a principal component analysis is a good approach to detect structuring. 
+
+
+```{r ex11, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+
+# PC is computed on the correlation matrix between individual genotypes
+pc = eigen(tcrossprod(scale(X))/ncol(X))
+
+# variance explained by first two components
+v1=round(pc$values[1]/sum(pc$values),3)*100
+v2=round(pc$values[2]/sum(pc$values),3)*100
+plot(pc$vectors[,1], pc$vectors[,2], xlab = paste0('PC1 % = ', v1), ylab=paste0('PC2 % = ',v2))
+```
+
+You have to be cautious, population is clearly structured in two groups. Note a difference along the x - axis is about twice as important as a difference along the second axis. According to [McVean (2009)](https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1000686), differences along the first axis can be interpreted as a mixture component of two founder populations, or as the differentiation coefficient Fst. PS: I find this work one of the most intelligent and elegant papers I ever read.
+
+A good idea is also to plot a histogram of minor allele frequencies. Note X here contains 0/1 values only as lines as inbred. Typically, genotypes will be coded as 0/1/2 or 1/2/3.
+
+```{r ex3, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# assumed genotypes coded as 0/1/2
+if (max(X)==3) {X=X-1} # if genotypes 1/2/3 --> 0/1/2
+if (max(X)==1) {X=X*2} # if genotypes 0/1 --> 0/2
+p = apply(X, 2, mean) * 0.5
+# this takes minor allele frequency (p<0.5)
+p[p>0.5] = p[p>0.5]-0.5
+hist(p, main='Allele frequencies')
+
+# ggplot
+p <- as_tibble(p)
+ggplot(p, aes(x=value)) + 
+  geom_histogram(bins=10, fill='grey', colour='black') + 
+  theme_minimal()+ 
+  labs(title='Minimum allele frequency')
+
+```
+
+Note most alleles are at high frequencies, showing that these data are from genotyping arrays (GBS in this case) rather than sequence. because most SNPs discovered by sequencing are very rare. Having markers at high frequency is good in principle as they are more informative, but they are not representative of actual genetic variability.
+
+**EXERCISE**: Plot the distribution of phenotypes.
+
+* Does distribution look normal? 
+* Overlap a normal density with corresponding mean and SD
+
+```{r ex4, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+
+```
+
+### Data Partition
+Prediction methods are typically evaluated by partitioning the whole dataset in two groups, training and test. The **training** partition is used for estimating model parameters. This process can be repeated doing n partitions. A typical choice is 10 partitions where each **test** partition holds 10% of the data. This is called 10-fold cross-validation. To assess how good the model works, predicted and observed values in the test partition are compared. Predicted phenotypes are obtained when parameters are fitted using the training data only.
+
+```{r exD1, include=TRUE,warning=FALSE,echo=TRUE,eval=FALSE,exercise=FALSE}
+# test set comprises 20% of data, randomly chosen
+tst = sort(sample(1:n, size=n*0.2, replace=FALSE))
+
+# train set
+XTRN<-X[-tst,]
+yTRN<-y[-tst]
+
+# testing test
+XTST<-X[tst,]
+yTST<-y[tst]
+```
+
+Given that structuring is present, you may want to check whether the two groups are represented in both training and test partitions.
+
+```{r exD2, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# Train set PCA
+# I may need to remove fixed markers, those for which SD is zero
+X1 <- XTRN[, which(apply(XTRN, 2, sd) != 0)]
+pcTRN = eigen(tcrossprod(scale(X1))/ncol(X))
+v1=pcTRN$values[1]/sum(pcTRN$values)
+v2=pcTRN$values[2]/sum(pcTRN$values)
+plot(pcTRN$vectors[,1], pcTRN$vectors[,2], xlab=v1, ylab=v2, main='Train partition')
+
+# Test PCA
+X2 <- XTST[, which(apply(XTST, 2, sd) != 0)]
+pcTST = eigen(tcrossprod(scale(X2))/ncol(X))
+v1=pcTST$values[1]/sum(pcTST$values)
+v2=pcTST$values[2]/sum(pcTST$values)
+points(pcTST$vectors[,1], pcTST$vectors[,2], col=2)
+```
+
+**WARNING**: Doing partitions can be tricky. One issue is to have all values of each value present in the train set. For instance, if SNP i is segregating in the test partition but not in the train partition, you will not be able to make predictions. You have to be careful then with rare SNPs and large test partitions. Note there is no problem in having only one class in the test set.
+
+It looks ok. Note exact values may vary because we are sampling TRN and TST partitions (see above instruction: ```tst<-sample(1:n, size=n*0.2, replace=FALSE)```).
+
+## The basics
+Genomic prediction is a special case of the **large p, small n** paradigm, ie, when we  potentially have many more regressors (variables, SNPs or features in the ML jargon) than observations n. In this scenario, **Ordinary Least Squares**, ie, standard regression, becomes undetermined and **X'X** is singular. 
+
+A typical problem with models having many variables is **overfitting**. In old times Statistics, having a good fit of the model was a good thing and the main criterion to choose a model. In modern days, data are huge and the potential number of features that can be introduced into the model is very large. As goodness of fit never decreases when new variables are added to the model, some researchers are tempted to use very complex models that fit the data perfectly well. Alas! these models suffer from **collinearity**, they are very unstable and furthermore, they do very poorly in prediction. See [Figure 4](https://en.wikipedia.org/wiki/Overfitting#/media/File:Overfitting_svg.svg) in [wikipedia](https://en.wikipedia.org/wiki/Overfitting). This is also called the **bias-variance tradeoff** (Chapter 2 of Hastie et al., The elements of statistical learning).
+
+The solution is to impose restrictions on the solutions. The types of restrictions to be imposed are infinite, which has resulted in numerous algorithms. Daniel Gianola provides a sound review of the topic, at an advanced level but worth every line, beautifully written ([Priors in Whole-Genome regression: The Bayesian alphabet returns](https://academic.oup.com/genetics/article/194/3/573/6065436)).
+
+Please also read Leo Breiman's [Statistical Modeling: The Two Cultures](http://www2.math.uu.se/~thulin/mm/breiman.pdf). Breiman (1928 - 2005) was inventor of random forests methodology, among many other fundamental contributions. 
+
+Intuitively, you have two broad choices: remove variables (SNPs) until you make **X'X** positive definite (**X** being the matrix with genotypes), or impose specific restrictions on the solutions. Actually, these are non mutually exclusive choices: You can select variables and impose restrictions on the remaining solutions.
+
+The two most popular restrictions are called L1 and L2 norms in the ML literature. 
+
+**L1** means that the restriction is on the absolute values of the solutions, that is, take bhat as a vector with SNP solutions, L1 implies maximizing likelihood conditional on ```sum(abs(bhat)) < lambda```, where lambda is a positive constant, a hyper-parameter which optimum value needs to be determined. This method is called **LASSO** and was invented in 1996 by Robert Tibshirani, one of the most influential statisticians in the last years.
+
+**L2** restriction means a restriction on the squared solutions, that is, maximizing likelihood conditional on ```sum((bhat**2) < alpha```, where alpha is a positive constant, a hyper-parameter which optimum value needs to be determined. This method is called **ridge regression** and was invented independently by different authors. According to wikipedia, the first time was by Andrey Tikhonov in the 1940s (https://en.wikipedia.org/wiki/Tikhonov_regularization).
+
+It happens that L1 is almost equivalent to a variable selection method, as it results in a model where most SNP solutions are shrunk into 0.
+
+## L1 and L2 regularizations
+
+We use [GLMNET](https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html) package from the inventors of LASSO. GLMNET fits a generalized linear model via penalized maximum likelihood. The regularization path is computed for the lasso or elastic-net penalty at a grid of values for the regularization parameter lambda. The algorithm is extremely fast, and can exploit sparsity in the input matrix X. It fits linear, logistic and multinomial, poisson, and Cox regression models. A variety of predictions can be made from the fitted models. It can also fit multi-response linear regression'.
+
+
+### Standard penalized linear regressions (Ridge- Regression and Lasso)
+Ridge regression is an extension of linear regression where the loss function is modified to minimize the complexity of the model. It is especially useful in cases where p>>n, since classical regression leads to large sampling variance and high mean square error. This modification is done by adding a penalty parameter that is equivalent to the square of the magnitude of the coefficients, i.e., in RR, the $\beta$ estimator is 
+
+$\hat{\beta}=_{arg min \beta} L(y,\beta) + \lambda\sum_{j\in S}{\beta_j^2 }$,
+
+Being $S$ the set of coefficients that are penalized. 
+
+Being $L(y,\beta)=\sum_i(y_i-\sum_jx_{ij}\beta_j)^2$
+
+Or in matrix notation: 
+
+$\hat{\beta}=_{arg min \beta} (y-X\beta)'(y-X\beta) + \lambda\beta'D\beta$
+
+$D=diag(s)$ being 1 if $j\in S$ and 0 otherwise,
+
+Ridge Regression is sometimes referred as L2 regularization. From the above equations, we can see what are the solutions (by deriving regarding beta and set it equal to zero, we will have the following solution ):
+
+$[X'X+\lambda D]\hat{\beta}=X'y$
+
+So, RR adds a constant $\lambda$ to the diagonal entries of the $X'X$, which shrink the coefficients towards zero by an uniform factor (the estimators are biases but with a lower variance).  Note that in RR, the hyperparameter $\lambda$ needs to be inferred. To choose the best value we can resort to a Cross validation using, for instance  cv.glmnet() function. 
+
+**Ridge estimator is biased** but has **lower variance** than the OLS estimator. 
+
+In GLMNET, RR corresponds to alpha=0
+
+```{r exr1, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# alpha 0 gives Ridge Regression
+fmRR=glmnet(y=yTRN,x=XTRN,lambda=.1, alpha=0)
+
+# predictions with ridge regression
+yhatRR = fmRR$a0 + XTST%*%fmRR$beta[,1]
+
+# correlations between predicted and observed values
+print(c('corr obs ridge', round(cor(yhatRR,yTST),3)))
+plot(yTST,yhatRR, main='Obs vs Ridge Regression', xlab='Obs', ylab = 'RR')
+```
+
+### LASSO
+Lasso results from minimizing squared error imposing a restriction on the sum of absolute values of b-hat. In GLMNET, it corresponds to alpha=1
+
+```{r exr2, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# alpha 1 gives Lassso
+fmL = glmnet(y=yTRN, x=XTRN, lambda=.1, alpha=1)
+ 
+# predictions with LASSO
+yhatL = fmL$a0 + XTST%*%fmL$beta[,1]
+
+print(c('corr obs lasso:', round(cor(yhatL,yTST),3)))
+plot(yTST,yhatL, main='Obs vs Lasso', xlab='Obs', ylab = 'Lasso')
+```
+
+
+### Elastic net
+The Elastic-Net is a regularised regression method that linearly combines both penalties i.e. L1 and L2 of the Lasso and Ridge regression methods. It is useful when there are multiple correlated features. The difference between Lasso and Elastic-Net lies in the fact that Lasso is likely to pick one of these features at random while elastic-net is likely to pick both at once (https://www.tutorialspoint.com/scikit_learn/scikit_learn_elastic_net.htm).
+
+```{r exr3, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# alpha between 0 and 1 gives elastic net
+fmEN=glmnet(y=yTRN, x=XTRN, lambda=.1, alpha=0.5)
+
+# predictions with elastic net
+yhatEN = fmEN$a0 + XTST%*%fmEN$beta[,1]
+
+print(c('corr obs net', round(cor(yhatEN,yTST),3)))
+plot(yTST,yhatEN, main='Obs vs Elastic Net', xlab='Obs', ylab = 'EN')
+```
+
+**EXERCISE**: Plot correlation(y, yhat) for a grid of alpha values.
+```{r exr4, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# your code here
+
+```
+
+## GBLUP
+GBLUP was originally proposed by [Van Raden (2008)](https://www.sciencedirect.com/science/article/pii/S0022030208709901?via%3Dihub). The idea is very simple and follows naturally from BLUP: Use standard mixed model equations replacing the pedigree relationship matrix by a **Genomic Relationship Matrix** (GRM) derived from marker information. Van Raden himself proposes several approaches to compute GRM, they differ basically in how sensitive are they to very rare markers. The improvement in GBLUP over BLUP is that GRM is more 'precise' than **A**, the pedigree based relationship. It is argued that GRM reflects the observed relationship as compared to the 'expected' one in A. Certainly, the marker covariance between sibs vary from pair to pair, whereas is constant in A.
+
+The main limitation of GBLUP is that the inverse of GRM has to be obtained using standard matrix inversion algorithms. In comparison, a rule to invert A very efficiently has been known for decades. [Ignacy Misztal](https://animaldairy.uga.edu/people/faculty/ignacy-misztal.html), co-inventor of the single step method, has also developed approximations to the inverse of GRM when dimensions are huge.
+
+```{r exg1, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# this function computes GRM with Van Raden algorithm
+vanraden = function(X){
+   # allele frequencies (assumes genotypes coded as 0,1,2)
+   p = apply(X, 2, mean) * 0.5
+   G = tcrossprod(scale(X, scale = FALSE))
+   G = G / (2 * sum(p*(1-p)))
+   diag(G) = diag(G)*1.05
+   return(G)
+}
+```
+
+### Mixed model equations 
+
+The mixed model equations (Henderson) in matricial notation are:
+
+\begin{align*}
+  \begin{bmatrix}
+    \mathbf{X^{'}R^{-1}X} & \mathbf{X^{'}R^{-1}Z} \\
+    \mathbf{Z^{'}R^{-1}X} & \mathbf{Z^{'}R^{-1}Z} + \mathbf{G^{-1} } \\
+  \end{bmatrix}
+  \begin{bmatrix}
+    \boldsymbol{\beta} \\
+    \mathbf{u} \\
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    \mathbf{X^{'}R^{-1}y} \\
+    \mathbf{Z^{'}R^{-1}y} \\
+  \end{bmatrix}
+\end{align*}
+
+Let us write a function to compute MMEs
+
+```{r  exg2, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# this function returns left and right hand side of mixed model equations
+mme = function(y, V, h2, invert=FALSE){
+   # y = phenotypes; V = covariance matrix; h2 = heritability
+   if (invert) V = solve(V)
+   n = length(y)
+   x = rep(1,n)
+   # replace missing with 0's
+   x[is.na(y)] = 0
+   y[is.na(y)] = 0
+   Z = diag(x)
+   LHS = matrix(nrow=n+1, ncol=n+1)
+   V = V *(1-h2)/h2 + t(Z)%*%Z
+   LHS[1,] = c(t(x)%*%(x), x)
+   LHS[-1,] = cbind(x,V)
+   RHS = c(t(x)%*%y, t(Z%*%y))
+   return(list('LHS'=LHS, 'RHS'=RHS))
+}
+```
+
+Now let us put everything together and 
+
+```{r ex12, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE, exercise=TRUE}
+# phenotypes with tst individuals missing values
+yNA = y
+yNA[tst] = NA
+
+# assumed heritability
+h2 = 0.4
+
+# genomic relationship matrix
+GRM = vanraden(X)
+
+# mixed model equations, evaluated only in training set
+MME = mme(y=yNA, V=GRM, h2=h2, invert=TRUE)
+
+# the predicted breeding values are the last n solutions
+uhat = solve(MME$LHS, MME$RHS)[-1]
+
+# corr between observed and predicted phenotypes
+yhatG = uhat[tst]
+print(c('corr obs net', round(cor(yhatG,y[tst]),3)))
+
+# plot
+plot(y[tst],yhatG, main='Obs vs GBLUP', xlab='Obs', ylab = 'GBLUP')
+
+# plot
+ds <- data.frame( "true"=yTST, "predicted" = yhatG)
+ggplot(ds, aes(x=true, y=predicted)) + 
+    geom_point(col="red") + 
+    stat_cor(method = "pearson",  aes(label = ..r.label..),label.x = -2.5, label.y = 1) +
+    theme_minimal() +
+    theme(axis.title.x = element_text("observed")) + 
+    theme(axis.title.y = element_text("Gblup estimator"))
+```
+
+## Bayesian Approaches
+The Bayesian paradigm naturally allows setting constraints on the solutions in the form of 'priors' (Meuwissen et al., [Gianola](https://doi.org/10.1534/genetics.113.151753), [Pérez and de los Campos](https://academic.oup.com/genetics/article/198/2/483/5935898). Varying these priors result in diverse well - known Bayesian genomic prediction methos (Bayes A, B, C, etc). Some of the most popular algorithms are Bayes A, Bayes B and Bayes C. Bayes A and B were proposed by [Meuwissen et al (2001)](https://academic.oup.com/genetics/article/203/1/5/5930304), Bayes C was proposed by [Habier et al., (2011)](https://doi.org/10.1186/1471-2105-12-186).
+
+### BGLR
+BGLR package ([Pérez and de los Campos, 2014](https://academic.oup.com/genetics/article/198/2/483/5935898)) allows fitting a wide range of Bayesian models, suitable for continuous, censored or categorical ordered traits (https://github.com/gdlc/BGLR-R). The model is specified through a list `ETA` with syntax   `ETA<-list(list(X=X1,model="BRR"), list(X=X2,model="BayesC)", ...)` where X1 and X2 are two feature sets here modeled, respectively, as Bayesian Ridge regression and Bayes C. `ETA` can contain any number of lists. Options for modeling are `FIXED`, `BRR`, `BayesA`, `BayesB`, `BayesC`, `BL` (Bayesian Lasso).
+
+BGLR returns a list with estimated posterior means, estimated posterior standard deviations and the arguments used to fit the model. 
+
+```{r  include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE}
+library(BGLR)
+# dummy data
+ydummy = rnorm(200)
+# fits an intercept model
+fm = BGLR(y=ydummy)
+print(names(fm))
+```
+
+The structure of the object returned after fitting the intercept model is as follows. The first element of the list (**fm\$y**) is the response vector used in the call to BGLR, **fm\$whichNa** gives the position of the entries in y that were missing, these two elements are then followed by several entries describing the call, and this is followed by estimated posterior means and estimated posterior standard deviations of the linear predictor (**fm\$yHat** and **fm\$SD.yHat**), the intercept (**fm\$mu** and **fm\$SD.mu**), and the residual variance (**fm\$varE** and **fm\$SD.varE**). Finally **fm\$fit** gives a list with DIC and DIC-related statistics.
+
+### Data partition
+```{r exb1, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# removes phenotypes from TST partition, tst contains ids of testing set
+yNA = y
+yNA[tst] = NA
+```
+
+### Bayesian Ridge Regression
+In this option regression coefficients are assigned normal IID normal distributions, with mean zero and variance s2b. The first plot can be used to monitor convergence.
+```{r exb2, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+### fit ridge model only to training set (yNA)
+ETA<-list(list(X=X,model="BRR"))
+fmRR<-BGLR(y=yNA,ETA=ETA,nIter=5000,burnIn=2000,verbose=FALSE)
+
+# trace plot of the residual variance
+varE<- scan("varE.dat")
+plot(varE, ylab='Var E', xlab='Iteration', type="o",col=2,cex=.5)
+abline(h=fm$varE,col=4, lwd=2)
+
+## plots of estimates
+plot(fmRR$ETA[[1]]$b,col=4,ylab='Estimate',main='BRR')
+
+print(c('Corr Obs vs. BRR', round(cor(fmRR$yHat[tst], y[tst]),3)))
+
+plot(y[tst], fmRR$yHat[tst],col=4,ylab='Observed y',xlab='BRR prediction')
+```
+
+### Bayes A
+In Bayes A, all SNP effects are assumed to be distributed as normal, N(0, s2q_i), where s2q_i is the variance for each locus. All SNPs are assumed to have an effect, albeit very small. 
+```{r exb3, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+### BayesA(Scaled-t prior)
+ETA<-list(list(X=X,model="BayesA"))
+fmBA<-BGLR(y=yNA,ETA=ETA,nIter=5000,burnIn=2000,verbose=FALSE)
+
+print(c('Corr Obs vs. Bayes A', round(cor(fmBA$yHat[tst], y[tst]),3)))
+
+plot(y[tst], fmBA$yHat[tst],col=4, ylab='Observed y',xlab='Bayes A prediction')
+```
+
+### Bayes B
+Bayes B, in contrast, allows for a fraction pi of SNPs to have an effect, assumed to be distributed normally N(0, s2q_i), and allows different variance s2q_i for each SNP effect. 
+```{r exb4, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+### BayesB (point of mass at zero + scaled-t slab)
+ETA<-list(list(X=X,model="BayesB"))
+fmBB<-BGLR(y=yNA,ETA=ETA,nIter=5000,burnIn=2000,verbose=FALSE)
+
+print(c('Corr Obs vs. Bayes B', round(cor(fmBB$yHat[tst], y[tst]),3)))
+
+plot(y[tst], fmBA$yHat[tst],col=4, ylab='Observed y',xlab='Bayes B prediction')
+```
+
+### Bayes C
+In Bayes C, as in Bayes B, SNP effects are modeled as a mixture where a proportion pi of SNPs has an effect and 1-pi don't. Prior effects are assumed to be distributed as N(0, s2q) where s2q is the same for all SNPs with effect.
+
+```{r exb5, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+ETA=list(list(X=X,model='BayesC'))
+  
+fmBC = BGLR(y=yNA,ETA=ETA,nIter=5000,burnIn=2000,verbose=F)
+
+### corr between predicted and observed
+print(c('Corr Obs vs. Bayes C', round(cor(fmBC$yHat[tst], y[tst]),3)))
+
+plot(y[tst], fmBC$yHat[tst],col=4,ylab='Observed y',xlab='Bayes C prediction')
+
+```
+
+### Bayesian GBLUP
+A Bayesian version of GBLUP can be implemented in different ways using BGLR (https://github.com/gdlc/BGLR-R/blob/master/inst/md/GBLUP.md). Here we used Bayesian RR whereby the principal components are the features modeled instead of the marker set. The main difference between Bayesian GBLUP and GBLUP is that uncertainties on variance components are integrated out in the Bayesian approach.
+
+We use an alternative algorithm to that of Van Raden to build the Genomic Relationship Matrix. It is simply the correlation matrix.
+
+```{r exb6, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# GRM
+doGRM = function(X) {
+    G = tcrossprod(scale(X))
+    G = G/mean(diag(G))
+    # recommended / required to avoid non positive definite matrices
+    diag(G) = diag(G)*1.05
+    return(G)
+}
+```
+
+
+```{r exb7, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# Bayesian GBLUP, BRR with PC decomposition
+G = doGRM(X)
+EVD<-eigen(G)
+PC = EVD$vectors%*%diag(sqrt(EVD$values))
+ETA=list(list(X=PC,model='BRR'))
+  
+fmGB<-BGLR(y=yNA,ETA=ETA,nIter=5000,burnIn=2000,verbose=F)
+
+### corr between predicted and observed
+print(c('Corr Obs vs. Bayes GBLUP', round(cor(fmBB$yHat[tst], y[tst]),3)))
+
+plot(y[tst], fmGB$yHat[tst],col=4,ylab='Observed y',xlab='BRR prediction')
+```
+
+All methods result in similar accuracies.
+
+## Single step
+**Single step GBLUP** is one of the most important developments in genomic prediction, since it allows considering both genotyped and ungenotyped individuals, provided they are connected by a pedigree. It was simultaneoulsy an independently proposed by [Andrés Legarra. Ignacio Aguilar and Ignacy Misztal](https://www.sciencedirect.com/science/article/pii/S0022030209707933) and by [Ole Christensen and Mogens Lund](https://doi.org/10.1186/1297-9686-42-2) in 2009 / 2010. SS derivation is based on some assumptions, such that the covariance between two genotyped individuals is independent of their pedigree information. It has been implemented across numerous breeding schemes and considerable literature exists on the topic, e.g., [Legarra et al. (2014)](https://doi.org/10.1016/j.livsci.2014.04.029).
+
+SS is based on deriving a relationship matrix **H** that uses both marker and pedigree information. The most amazing property is that the inverse of H is very easy to compute and requires to invert a matrix of size only the number of genotyped individuals. This is quite convenient, since the number of ungenotyped individuals is typically far larger than those with marker information.
+
+To compute **H** or inverse **H_1** we need to specify:
+
+* Pedigree **ped** .
+* Marker file **X**.
+* List of genotyped individuals **idX**
+
+So far we only have X, the nxp matrix containing p genotypes for n individuals. We need to generate a pedigree and define which individuals are genotyped (specified in vector idX). This will be a subset of all n.
+
+### Generating a pedigree
+We do not have pedigree for the wheat data so let us simulate one, just for pedagogical purposes. Let us assume the whole set of n individuals is arranged as nf full-sib families. To assign each individual to a family we cluster individuals in nf clusters.  
+
+We use package [AGHmatrix](https://cran.r-project.org/web/packages/AGHmatrix/vignettes/Tutorial_AGHmatrix.html) to compute pedigree based relationshipmatrix **A**.
+
+```{r exh1, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# no of families
+nf = 10
+
+# cluster
+h = hclust(dist(X),method="ward.D2")
+
+# cuts the tree into nf clusters (families), hcut contains cluster id for each ind
+hcut = cutree(h,nf)
+
+# size is n plus two parents per family
+N = nrow(X) + 2*nf
+ped = matrix(0, nrow=N, ncol=3)
+ped[,1] = seq(N)
+ped[(2*nf+1):N,2] = hcut*2-1
+ped[(2*nf+1):N,3] = hcut*2
+
+# AGHmatrix package used to compute pedigree based relationship matrix
+A = Amatrix(ped)
+```
+
+### Specifying genotyped individuals
+We need to specify genotyped and ungenotyped individuals. Original **X** has dimension nxp, current pedigree has n+2nf ids. Founder individuals are arbitrary and have no phenotypes.  
+  
+Let us assume first n/5 in X plus the 2nf founder individuals are not genotyped. Therefore, we need to consider only markers in X from individual n/5 + 1 onwards, since X does not include the founder, simulated individuals.
+```{r exh2, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# no. individuals in pedigree
+N = nrow(A)
+# no. individuals genotyped available
+n = nrow(X)
+# no. individuals not genotyped = founders + n/5
+# %/% is the integer division
+n0 = nf*2 + n %/% 5
+
+# list of genotyped individuals (last n*4/5), ids refer to whole pedigree
+idX = seq((n0 + 1), N)
+
+# Xss: actual X to be used
+# IMPORTANT: we need to subtract no. of founders since X contains genotypes of non-founders only (dimension n), idX refers to the global pedigree ids.
+Xss = X[(idX-2*nf),]
+
+# filter by non segregating SNPs
+# not needed in vanraden option, but required for doGRM function
+Xss = Xss[, which(apply(Xss, 2, sd) != 0)]
+```
+
+### **H** inverse
+Now let us obtain **H** inverse
+```{r exh4, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+Gss = vanraden(Xss)
+G_1 = solve(Gss)
+
+# block in A for genotyped individuals, inverted
+A22_1 = solve(A[idX,idX])
+
+# inverse of A. Efficient rules to invert A are known since 1976, 
+# here we simply use brute force, (sorry, Chuck).
+A_1 = solve(A)
+
+# H inverse
+H_1 = A_1
+H_1[idX,idX] = H_1[idX,idX] + G_1 - A22_1
+
+# That's it!
+```
+Amazing, isn't it?
+
+You can have above code as function:
+```{r exh5, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# returns H inverse
+doH_1 = function(A,G,idX) {
+    # A is pedigree relationship matrix, 
+    # G is GRM of genotyped individuasl, 
+    # A[idX,idX] contains block of A corresponding to genotyped inds
+    G_1 = solve(G)
+
+    # block in A for genotyped individuals, inverted
+    A22_1 = solve(A[idX,idX])
+
+    # inverse of A
+    A_1 = solve(A)
+
+    # H inverse
+    H_1 = A_1
+    H_1[idX,idX] = H_1[idX,idX] + G_1 - A22_1
+}
+```
+
+### Direct **H** 
+```{r exh6, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+H = matrix(nrow=N,ncol=N)
+A22_1 = solve(A[idX,idX])
+A12 = A[-idX,idX]
+
+H11 = A[-idX,-idX] + A12 %*% A22_1 %*% (Gss-A[idX,idX]) %*% A22_1 %*% t(A12)
+H12 = A12 %*% A22_1 %*% Gss
+
+H[-idX,-idX] = H11
+H[-idX,idX] = H12
+H[idX,-idX] = t(H12)
+H[idX,idX] = Gss
+```
+Not that difficult, either!  
+
+### Single step GBLUP
+Once we have an expression for **H** and its inverse, we can simply re utilize previous code on GBLUP. 
+
+```{r exh7, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# The y vector now has dimension N = n + 2*nf, trn ids need to be updated
+tst1 = tst + 2*nf
+# we define a new vector of observations with NAs for founders
+y1 = c(rep(NA,2*nf), y)
+
+# phenotypes with tst individuals missing values
+yNA = y1
+yNA[tst1] = NA
+
+# assumed heritability
+h2 = 0.4
+
+# mixed model equations, evaluated only in training set
+MME = mme(y=yNA, V=H, h2=h2, invert=TRUE)
+
+# or far more efficient
+MME = mme(y=yNA, V=H_1, h2=h2, invert=FALSE)
+
+# the predicted breeding values are the last n solutions
+uhat = solve(MME$LHS, MME$RHS)[-1]
+
+# corr between observed and predicted phenotypes
+yhatH = uhat[tst1]
+
+print(c('corr obs net', round(cor(yhatH,y1[tst1]),3)))
+
+# plot
+plot(y1[tst1],yhatH, main='Obs vs GBLUPss', xlab='Obs', ylab = 'GBLUPss')
+```
+
+**WARNING**: WE have invented a pedigree so predictions need not be good nor similar to previous ones.
+
+## Deep learning
+There is a lot of fuss around deep learning these days. The best choice is to use [keras](https://keras.io/) and [tensorflow](https://www.tensorflow.org/) in a python environment. Yet, there exists as well a R interface to keras that is ok for modest size problems (https://tensorflow.rstudio.com/), which we will use here. For a guide on deep learning concepts useful for genomic prediction, check [Pérez-Enciso and Zingaretti  (2019)](https://www.mdpi.com/2073-4425/10/7/553). A most useful book is F. Chollet (2021) [Deep Learning with Python](https://www.manning.com/books/deep-learning-with-python-second-edition)
+  
+We will learn how to fit two different types of NNs using keras, tensorflow and R. We have to adjust the  weights  (i.e., "the slopes and bias in a classical linear regression"). These weights are the strength of connections between neurons and need to be 'learned' (estimated) from data. Therefore, for that learning step, you use training data and tune the weights to optimally fit the data. After fitting, yo will use the model to predict new observations. 
+
+However, the training step involves two stages: 
+1- choose an architecture. 
+2- Tune the weights of the model so that the training data is best described. This fitting
+step is usually done using backward propagation and gradient descent. 
+
+Here, we focus in two architectures:
+
+- Multiple Layer Perceptron (**MLP**)
+
+- Convolutional Neural Networks (**CNN**)
+
+Specific libraries
+```{r exl, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+library(tensorflow)
+library(reticulate) ## to connect python and R 
+library(keras)
+library(tfdatasets)
+#install_tensorflow()
+```
+
+
+Some basic parameters...
+```{r exd1, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# No. of SNPs
+p = ncol(X)
+# No. of epochs, iterations to fit the model
+epochs = 12
+# % of data used to validate during training
+validation_split = 0.1
+# You can add many other hyper-parameters here, eg, optimization algorithm, activation function...
+# ...
+```
+
+This is the main block, where we define the network. Here we take a simple two layer architecture with 128 and 64 neurons, the last layer is to produce the output It has one neuron as we predict one real number.
+```{r exd2, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# Define the model
+model <- keras_model_sequential() %>%
+    layer_dense(units = 128, activation = 'relu', input_shape = p) %>% 
+    layer_dense(units = 64, activation = 'relu') %>% 
+    layer_dense(units = 1, activation = 'linear') # output is linear
+
+# visualize the model
+summary(model)
+```
+
+Specify options for optimization and metrics to quantify convergence.
+```{r exd3, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# Compile model
+model %>% compile(
+    loss = loss_mean_squared_error,
+    optimizer = optimizer_adadelta(),
+    metrics = c('mean_absolute_error')
+)
+```
+
+Train the model with the train set.
+```{r exd4, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# Train model
+model %>% fit(
+    XTRN, yTRN,
+    epochs = epochs,
+    validation_split = validation_split
+)
+```
+
+```{r exd5, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# Evaluate the model
+yhatDL = model %>% predict(XTST)
+
+print(c('corr obs DL', round(cor(yhatDL,y[tst]),3)))
+
+# plot
+plot(y[tst],yhatDL, main='Obs vs Deep Learning', xlab='Obs', ylab = 'DL')
+```
+
+**A bit more sophisticated approach by LM Zingaretti...**
+
+### Prepare dataset
+
+```{r exd6, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+train_df <- XTRN %>% as_tibble(.name_repair = "minimal") 
+test_df <- XTST %>%  as_tibble(.name_repair = "minimal") 
+
+# Join dfs
+train_df<-data.frame(train_df,"y"=yTRN)
+test_df<-data.frame(test_df,"y"=yTST)
+
+# Normalize data using spec 
+spec <- feature_spec(train_df, y ~ . ) %>% 
+        step_numeric_column(all_numeric(), normalizer_fn = scaler_standard()) %>% 
+        fit()
+```
+
+### MLP
+Define the model
+```{r exd7, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# Implements a standard fully connected network (MLP) for a quantitative target using the layer_dense_feature. 
+# Currently, there are two ways of specifying a model in keras
+
+# 1. 'old' ways
+input <- layer_input_from_dataset(train_df %>% select(-y)) 
+
+#input will have the same shape than X_train, i.e. the number of variables in the dataset 
+output <- input %>%
+  # Note that we only need to pass the dense_features from the spec we just created.
+  layer_dense_features(dense_features(spec)) %>% 
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = 32, activation = "softplus") %>%
+  layer_dense(units = 1, activation = "linear") 
+
+model <- keras_model(input, output)
+```
+
+Compile 
+```{r exd8, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+model %>% 
+  compile(
+    loss = "mse",
+    optimizer = optimizer_rmsprop(),
+    metrics = list("mean_absolute_error")
+  )
+```
+
+Fit the model
+```{r exd9, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# Display training progress by printing a single dot for each completed epoch.
+print_dot_callback <- callback_lambda(
+  on_epoch_end = function(epoch, logs) {
+    if (epoch %% 80 == 0) cat("\n")
+    cat(".")
+  }
+)
+
+history <- model %>% fit(
+  x = train_df %>% select(-y),
+  y = train_df$y,
+  epochs = 20, #note that this process is so slow, so choose 20 epochs just for try out 
+  # please set just a few epochs in order to run  
+  #10 e.g 
+  validation_split = 0.2,
+  verbose = 0,
+  callbacks = list(print_dot_callback)
+)
+
+# save the model 
+### model %>% save_model_tf("model_MLP")
+# load the model
+
+# model history
+plot(history)
+```
+
+Check model accuracy
+```{r exd10, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+#if you have a gpu, try to use it 
+with(tf$device('GPU:0'), {
+  test_predictions <- model %>% predict(test_df %>% select(-y))
+})
+
+ds <- data.frame("true"=test_df$y,"predicted"=test_predictions[,1])
+
+ggplot(ds, aes(x=true, y=predicted)) + 
+  geom_point(col="red") + theme_minimal() + 
+  ggtitle("MLP predictions") +
+  stat_cor(method = "pearson",  aes(label = ..r.label..),label.x = -2.5, label.y = 1) 
+```
+
+### CNN model 
+Remember CNN must include some convolution operation in the hidden layer. To fit a CNN model, we have to extend the dimensions of the object. For a 2D CNN, the object has to be a 3D matrix. For a 3D CNN, the object has to be a 4-dimensional matrix...  
+
+```{r exd11, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+# to adjust a convolution we need to expand the dimension of train and test, 
+# i.e. now, instead of a data frame of n x p, we must have an array of dimension n x p x 1 
+xtrain<-train_df %>% select(-y) %>% scale() %>% array(,dim=c(nrow(train_df),ncol(train_df)-1,1))
+
+xtest <- test_df%>%select(-y)%>%scale()%>%array(,dim=c(nrow(test_df),ncol(test_df)-1,1))
+```
+
+Define the model 
+```{r exd12, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+model_CNN <- keras_model_sequential() 
+
+model_CNN %>%
+  layer_conv_1d(filters = 32, kernel_size = 3, strides=3,
+               input_shape = c(dim(xtrain)[2],dim(xtrain)[3]), activation = "relu") %>%
+  layer_max_pooling_1d(pool_size=2) %>%
+  layer_flatten() %>%
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = 32, activation = "relu") %>%
+  layer_dense(units = 1, activation = "linear")
+ 
+model_CNN %>% compile(
+  loss = "mse",
+  optimizer = "sgd")
+
+model_CNN %>% summary()
+```
+
+```{r exd13, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+class(xtrain)
+y_t<-as.matrix(train_df$y,dim=c(nrow(train_df),1))
+class(y_t)
+```
+
+Fit and define history 
+```{r exd14, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+print_dot_callback <- callback_lambda(
+  on_epoch_end = function(epoch, logs) {
+    if (epoch %% 80 == 0) cat("\n")
+    cat(".")
+  }
+)
+
+history_CNN <- model_CNN %>% fit(
+  x = xtrain,
+  y = y_t,
+  epochs = 20, #note that this process is so slow, so choose 20 epochs just for try out 
+  # please set just a few epochs in order to run  
+  #10 e.g 
+  validation_split = 0.2,
+  verbose = 0,
+  callbacks = list(print_dot_callback)
+)
+```
+
+```{r exd15, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+plot(history_CNN)
+
+#if you have a gpu, try to use it 
+with(tf$device('GPU:0'), {
+  test_predictions <- model_CNN %>% predict(xtest)
+})
+
+```
+
+```{r exd16, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+ds<-data.frame("true"=test_df$y,"predicted"=test_predictions[,1])
+ggplot(ds, aes(x=true, y=predicted)) +
+geom_point(col="red") + theme_minimal() + 
+ggtitle("CNN predictions") + stat_cor(method = "pearson",  aes(label = ..r.label..),label.x = -2.5, label.y = 1) 
+```
+
+```{r exd17, include=TRUE,warning=FALSE,echo=TRUE,eval=TRUE,exercise=TRUE}
+score <- model_CNN %>% evaluate(xtest, test_df$y, batch_size = 32)
+score
+sqrt(score)
+```
+
+## To recollect
+Science is but a tiny part of human activity. Poetry is also a tiny but fundamental feature of mankind. These two pieces are among the most moving poems can be composed and sung.
+
+Paco Ibáñez sings Gabriel Celaya's [La poesía es un arma cargada de futuro](https://www.youtube.com/watch?v=bKnEaCweikg)
+
+Mercedes Sosa sings Violeta Parra's [Gracias a la vida](https://www.youtube.com/watch?v=YbOicqxuSVk)
+
+Gabriel Celaya (1911 - 1991) is not one of the best or most influential Spanish poets, but I have always found this poem sung by Paco Ibáñez deeply moving. The poet criticizes art per se, a void art without the will to improve our society. 
+
+**La poesía es un arma cargada de futuro**
+``` 
+Cuando ya nada se espera personalmente exaltante,
+mas se palpita y se sigue más acá de la conciencia,
+fieramente existiendo, ciegamente afirmando,
+como un pulso que golpea las tinieblas,
+cuando se miran de frente
+los vertiginosos ojos claros de la muerte,
+se dicen las verdades:
+las bárbaras, terribles, amorosas crueldades.
+
+Se dicen los poemas
+que ensanchan los pulmones de cuantos, asfixiados,
+piden ser, piden ritmo,
+piden ley para aquello que sienten excesivo.
+
+Con la velocidad del instinto,
+con el rayo del prodigio,
+como mágica evidencia, lo real se nos convierte
+en lo idéntico a sí mismo.
+
+Poesía para el pobre, poesía necesaria
+como el pan de cada día,
+como el aire que exigimos trece veces por minuto,
+para ser y en tanto somos dar un sí que glorifica.
+
+Porque vivimos a golpes, porque a penas si nos dejan
+decir que somos quien somos,
+nuestros cantares no pueden ser sin pecado un adorno.
+Estamos tocando el fondo.
+
+Maldigo la poesía concebida como un lujo
+cultural por los neutrales
+que, lavándose las manos, se desentienden y evaden.
+Maldigo la poesía de quien no toma partido hasta mancharse.
+Hago mías las faltas. Siento en mí a cuantos sufren
+y canto respirando.
+Canto, y canto, y cantando más allá de mis penas
+personales, me ensancho.
+
+Quisiera daros vida, provocar nuevos actos,
+y calculo por eso con técnica, qué puedo.
+Me siento un ingeniero del verso y un obrero
+que trabaja con otros a España en sus aceros.
+
+Tal es mi poesía: poesía-herramienta
+a la vez que latido de lo unánime y ciego.
+Tal es, arma cargada de futuro expansivo
+con que te apunto al pecho.
+
+No es una poesía gota a gota pensada.
+No es un bello producto. No es un fruto perfecto.
+Es algo como el aire que todos respiramos
+y es el canto que espacia cuanto dentro llevamos.
+
+Son palabras que todos repetimos sintiendo
+como nuestras, y vuelan. Son más que lo mentado.
+Son lo más necesario: lo que no tiene nombre.
+Son gritos en el cielo, y en la tierra, son actos.
+```
+  
+Gracias a la vida is a love song, love to the whole of life. One cannot help but be thrilled when listening to Mercedes Sosa, la negra. Ironically, Chilean Violeta Parra (1917 - 1967) committed suicide soon after writing this poem.
+  
+**Gracias a la vida**
+```
+Gracias a la vida que me ha dado tanto
+Me dio dos luceros que cuando los abro
+Perfecto distingo lo negro del blanco
+Y en el alto cielo su fondo estrellado
+Y en las multitudes el hombre que yo amo
+
+Gracias a la vida que me ha dado tanto
+Me ha dado el oído que en todo su ancho
+Graba noche y días
+Grillos y canarios, martillos, turbinas
+Ladridos, chubascos
+Y la voz tan tierna de mi bien amado
+
+Gracias a la vida que me ha dado tanto
+Me ha dado el sonido y el abecedario
+Con el las palabras que pienso y declaro
+Madre, amigo, hermano y luz alumbrando
+La ruta del alma del que estoy amando
+
+Gracias a la vida que me ha dado tanto
+Me ha dado la marcha de mis pies cansados
+Con ellos anduve ciudades y charcos
+Playas y desiertos, montañas y llanos
+Y la casa tuya, tu calle y tu patio
+
+Gracias a la vida que me ha dado tanto
+Me dio el corazón que agita su marco
+Cuando miro el fruto del cerebro humano
+Cuando miro el bueno tan lejos del malo
+Cuando miro el fondo de tus ojos claros
+
+Gracias a la vida que me ha dado tanto
+Me ha dado la risa y me ha dado el llanto
+Así yo distingo dicha de quebranto
+Los dos materiales que forman mi canto
+Y el canto de ustedes que es el mismo canto
+Y el canto de todos que es mi propio canto
+
+Gracias a la vida
+```
