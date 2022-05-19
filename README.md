@@ -16,3 +16,19 @@ install.packages("remotes",repos="https://cran.r-project.org/")
 remotes::install_github("rstudio/gradethis") 
 
 On top, for running deepl learning you need to install miniconda, follow instructions in https://keras.rstudio.com/ 
+
+## How to use
+
+```
+# only once
+install.packages('remotes')
+remotes::install_github('miguelperezenciso/GPtour')
+
+# to use
+library(GPtour)
+library(learnr)
+learnr::run_tutorial('tour', 'GPtour')
+
+# Enjoy!
+
+```
