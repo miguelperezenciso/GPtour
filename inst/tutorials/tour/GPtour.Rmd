@@ -1,5 +1,5 @@
 ---
-title: "Genomic_prediction: A_practical_tour_in_R"
+title: "Genomic prediction: A practical tour in R"
 author:
   - name: Miguel Pérez-Enciso
     email: miguel.perez@uab.es
@@ -51,7 +51,7 @@ install.packages("keras",repos="https://cran.r-project.org/")
 install.packages("tfdatasets", repos="https://cran.r-project.org/")
 
 
-```{r setup, include=TRUE, echo=FALSE}
+```{r setup, include=TRUE, echo=FALSE, message=FALSE}
 ### Libraries required
 library(learnr)
 library(devtools)
@@ -76,6 +76,7 @@ knitr::opts_chunk$set(echo = FALSE,
 data(wheat)
 X = wheat.X
 Y = wheat.Y
+y = Y[,2]
 ```
 
 ## Data
@@ -162,8 +163,9 @@ Note most alleles are at high frequencies, showing that these data are from geno
 ### Data Partition
 Prediction methods are typically evaluated by partitioning the whole dataset in two groups, training and test. The **training** partition is used for estimating model parameters. This process can be repeated doing n partitions. A typical choice is 10 partitions where each **test** partition holds 10% of the data. This is called 10-fold cross-validation. To assess how good the model works, predicted and observed values in the test partition are compared. Predicted phenotypes are obtained when parameters are fitted using the training data only.
 
-```{r exD1, include=TRUE,warning=FALSE,echo=TRUE,eval=FALSE,exercise=FALSE}
+```{r exD1, include=TRUE,warning=FALSE,echo=TRUE,eval=FALSE,exercise=TRUE}
 # test set comprises 20% of data, randomly chosen
+
 tst = sort(sample(1:n, size=n*0.2, replace=FALSE))
 
 # train set
