@@ -51,7 +51,7 @@ install.packages("keras",repos="https://cran.r-project.org/")
 install.packages("tfdatasets", repos="https://cran.r-project.org/")
 
 
-```{r setup, include=TRUE}
+```{r setup, include=TRUE, echo=FALSE}
 ### Libraries required
 library(learnr)
 library(devtools)
@@ -71,6 +71,11 @@ knitr::opts_chunk$set(echo = FALSE,
                       warning = FALSE,
                       error = FALSE,
                       message = FALSE)
+
+# Create data
+data(wheat)
+X = wheat.X
+Y = wheat.Y
 ```
 
 ## Data
