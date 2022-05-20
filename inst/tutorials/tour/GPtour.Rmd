@@ -19,7 +19,7 @@ I assume you are somewhat familiar with genomic prediction, and have some knowle
 ### What is this?
 This is a quick, straight to the point tour on how to implement genomic prediction (**GP**) in R using the most popular algorithms in breeding. Albeit simple, it provides the basics on which you can build far more complex models. I recommend Andrés Legarra [notes](http://genoweb.toulouse.inra.fr/~alegarra/GSIP.pdf) for methods in GP, [BGLR](https://github.com/gdlc/BGLR-R), [glmnet](https://glmnet.stanford.edu/articles/glmnet.html) and [scikit](https://scikit-learn.org/stable/tutorial/index.html) doc websites for further documentation. These notes will not explain too many methodological insights. 
 
-### What is genomic predicion?
+### What is genomic prediction?
 Genomic prediction is the strategy whereby all available markers, irrespective of their effect, are included in the model to make predictions. By comparison, only significant markers are used in Marker Assisted Selection (**MAS**). The main reason why MAS performs much worse than GP is that there are many markers that explain a non-significant part of the variance individually (and are therefore not selected for MAS) but that, collectively, they help in prediction. The seminal work for GP was published in 2001 in Genetics ' [Prediction of total genetic value using genome-wide dense marker maps](https://doi.org/10.1093/genetics/157.4.1819) ', by Theo Meuwissen, Ben Hayes and Mike Goddard. Retrospectively, it is interesting to note that this work uses haplotypes instead of invidual markers as regressors.
 
 ### Prediction is a pragmatic, heterogenous field
@@ -28,7 +28,7 @@ It does not matter whether the algorithm is black or white, as long as it predic
 Unsurprisingly, dozens of diverse algorithms exist for prediction ([scikit](https://scikit-learn.org/stable/tutorial/machine_learning_map/index.html), [Gianola 2013](https://doi.org/10.1534/genetics.113.151753)). 
 
 ### Acknowledgment
-I thank [Laura Zingaretti](https://www.linkedin.com/in/laura-m-zingaretti/) and MSc student Jorge Leonardo López Martínez (jollopezma@unal.edu.co) from Universidad de Medellín in beautiful Colombia for their generous help with this script. Part of this script is based on Gustavo de los Campos (gdeloscampos@epi.msu.edu).
+I thank [Laura Zingaretti](https://www.linkedin.com/in/laura-m-zingaretti/) and MSc student [Jorge Leonardo López Martínez](https://leo4luffy.github.io/index.html) (jollopezma@unal.edu.co) from Universidad de Medellín in beautiful Colombia for their generous help with this script. Part of this script is based on Gustavo de los Campos (gdeloscampos@epi.msu.edu).
 
 ### About me
 [github](https://github.com/miguelperezenciso)
