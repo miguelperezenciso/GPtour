@@ -1,5 +1,5 @@
 # GPtour: Genomic Prediction Tour in R
-This is a quick, straight to the point tour on how to implement genomic prediction in R using the most popular algorithms in breeding. We use [Rstudio](https://www.rstudio.com/) and [learnr](https://rstudio.github.io/learnr/) packages, among other tools.
+This is a quick, straight to the point tour on how to implement genomic prediction in R using the most popular algorithms (Lasso, Ridge Regression, GBLUP, Single Step, Bayes A,B,C, Multilayer Perceptron, Convolutional Neural Network). We use [Rstudio](https://www.rstudio.com/) and [learnr](https://rstudio.github.io/learnr/) packages, among other tools.
 
 The main code is in [GPtour.Rmd](https://github.com/miguelperezenciso/GPtour/blob/main/inst/tutorials/tour/GPtour.Rmd) 
 
